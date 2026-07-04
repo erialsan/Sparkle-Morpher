@@ -102,7 +102,7 @@ public final class ExtraAnimationKey {
                     Minecraft.getInstance().setScreen(new UnifiedRouletteScreen(cap.getModelId(), modelAssembly, cap));
                     return;
                 }
-                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(index, StringPool.EMPTY));
+                NetworkHandler.sendToServer(new C2SPlayAnimationPacket(index, StringPool.EMPTY, rouletteKey));
             }
         });
     }

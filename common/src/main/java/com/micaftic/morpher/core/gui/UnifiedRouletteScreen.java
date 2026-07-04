@@ -68,6 +68,7 @@ public class UnifiedRouletteScreen extends Screen {
 
     private int centerX;
     private int centerY;
+    private float layoutScale = 1.0f;
 
     private int hoveredIndex = -1;
     private int hoveredGearIndex = -1;
@@ -159,7 +160,28 @@ public class UnifiedRouletteScreen extends Screen {
     protected void init() {
         this.centerX = this.width / 2;
         this.centerY = this.height / 2;
+        this.layoutScale = computeLayoutScale();
         if (currentNavEntry.getRight() >= pageCount()) currentNavEntry.setValue(0);
+    }
+
+    /**
+     * Uniform scale (&lt;= 1) that shrinks the fixed-size wheel so it fits the
+     * current GUI-scaled screen. Keeps the roulette from overflowing at high
+     * vanilla GUI Scale or on small resolutions.
+     */
+    private float computeLayoutScale() {
+        return Math.min(1.0f, Math.min(
+                (float) this.width / RouletteTheme.DESIGN_WIDTH,
+                (float) this.height / RouletteTheme.DESIGN_HEIGHT));
+    }
+
+    /** Convert a raw (screen) mouse coordinate into the wheel's unscaled logical space. */
+    private int logicalMouseX(double mouseX) {
+        return (int) Math.round(centerX + (mouseX - centerX) / layoutScale);
+    }
+
+    private int logicalMouseY(double mouseY) {
+        return (int) Math.round(centerY + (mouseY - centerY) / layoutScale);
     }
 
     // ---- Layout helpers ----------------------------------------------------
@@ -183,13 +205,26 @@ public class UnifiedRouletteScreen extends Screen {
         // Dim veil to focus attention
         g.fill(0, 0, this.width, this.height, RouletteTheme.BG_VEIL);
 
-        updateHover(mouseX, mouseY);
+        int lmx = logicalMouseX(mouseX);
+        int lmy = logicalMouseY(mouseY);
+        updateHover(lmx, lmy);
+
+        boolean scaled = layoutScale < 0.999f;
+        if (scaled) {
+            g.pose().pushPose();
+            g.pose().translate(centerX, centerY, 0.0f);
+            g.pose().scale(layoutScale, layoutScale, 1.0f);
+            g.pose().translate(-centerX, -centerY, 0.0f);
+        }
         renderSlices(g);
         renderLabels(g);
         renderCenter(g);
         renderPageButtons(g);
         renderEditButton(g);
-        renderPathAndPage(g, mouseX, mouseY);
+        renderPathAndPage(g, lmx, lmy);
+        if (scaled) {
+            g.pose().popPose();
+        }
 
         super.render(g, mouseX, mouseY, partialTick);
     }
@@ -364,7 +399,10 @@ public class UnifiedRouletteScreen extends Screen {
             g.drawString(this.font, clean, centerX - textWidth / 2, y, color, true);
             return;
         }
-        if (!hover) {
+        if (!hover || layoutScale < 0.999f) {
+            // When the wheel is scaled down we skip the scrolling marquee: the
+            // scissor rect is applied in screen space and would not line up
+            // with the scaled text. Ellipsis clipping is scale-safe.
             String clipped = trimToWidth(clean, maxWidth);
             g.drawString(this.font, clipped, centerX - this.font.width(clipped) / 2, y, color, true);
             return;
@@ -558,8 +596,8 @@ public class UnifiedRouletteScreen extends Screen {
             else playAnimation(key);
             return true;
         }
-        double cdx = mouseX - centerX;
-        double cdy = mouseY - centerY;
+        double cdx = logicalMouseX(mouseX) - centerX;
+        double cdy = logicalMouseY(mouseY) - centerY;
         if (cdx * cdx + cdy * cdy <= RouletteTheme.WHEEL_INNER_R * RouletteTheme.WHEEL_INNER_R) {
             if (animatableModel.getEntity() instanceof Player) {
                 AnimationLockEvent.toggleLock();
@@ -631,13 +669,13 @@ public class UnifiedRouletteScreen extends Screen {
             if (usingCustomLayout) {
                 int realIndex = customOriginalIndexMap.getOrDefault(key, hoveredIndex);
                 String realCategory = customOriginalCategoryMap.getOrDefault(key, StringPool.EMPTY);
-                if (entity instanceof Player) NetworkHandler.sendToServer(new C2SPlayAnimationPacket(realIndex, realCategory));
-                else NetworkHandler.sendToServer(new C2SPlayAnimationPacket(realIndex, realCategory, entity.getId()));
+                if (entity instanceof Player) NetworkHandler.sendToServer(new C2SPlayAnimationPacket(realIndex, realCategory, key));
+                else NetworkHandler.sendToServer(new C2SPlayAnimationPacket(realIndex, realCategory, entity.getId(), key));
             } else {
                 Pair<String, Integer> last = navigationStack.peekLast();
                 String submenu = (last != null && StringUtils.isNotBlank(last.getLeft())) ? last.getLeft() : StringPool.EMPTY;
-                if (entity instanceof Player) NetworkHandler.sendToServer(new C2SPlayAnimationPacket(hoveredIndex, submenu));
-                else NetworkHandler.sendToServer(new C2SPlayAnimationPacket(hoveredIndex, submenu, entity.getId()));
+                if (entity instanceof Player) NetworkHandler.sendToServer(new C2SPlayAnimationPacket(hoveredIndex, submenu, key));
+                else NetworkHandler.sendToServer(new C2SPlayAnimationPacket(hoveredIndex, submenu, entity.getId(), key));
             }
         } else if (player != null) {
             PlayerCapability.get(player).ifPresent(cap -> cap.requestModelSwitch(key));

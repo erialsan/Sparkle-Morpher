@@ -10,6 +10,17 @@ public final class RouletteTheme {
     private RouletteTheme() {
     }
 
+    // ---- Adaptive layout footprint ----
+    // The roulette is laid out with fixed pixel offsets from the screen
+    // center. These two values describe the total footprint that layout
+    // occupies (page buttons at +/-160+radius horizontally, path label at
+    // -150 and page indicator at +136 vertically, plus margins). When the
+    // GUI-scaled screen is smaller than this footprint the whole wheel is
+    // uniformly scaled down so it never overflows at high GUI scale / small
+    // resolutions. See UnifiedRouletteScreen#layoutScale.
+    public static final int DESIGN_WIDTH = 380;
+    public static final int DESIGN_HEIGHT = 340;
+
     // ---- Layout (all values are pixel offsets from the screen center) ----
     public static final float WHEEL_INNER_R = 30.0f;
     public static final float WHEEL_GEAR_R = 56.0f;

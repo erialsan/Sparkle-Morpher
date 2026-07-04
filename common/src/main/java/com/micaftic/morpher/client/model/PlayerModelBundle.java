@@ -127,7 +127,9 @@ public class PlayerModelBundle {
     }
 
     public boolean hasVanillaPoseFallback() {
-        return this.actionProfile == ModelActionProfile.HYBRID_AUTHORED_WITH_VANILLA_FALLBACK;
+        // VANILLA_HUMANOID（bbmodel/figura）现在也装了 fallbackOnly 的 vanilla 姿态兜底控制器
+        return this.actionProfile == ModelActionProfile.HYBRID_AUTHORED_WITH_VANILLA_FALLBACK
+                || this.actionProfile == ModelActionProfile.VANILLA_HUMANOID;
     }
 
     public ModelSourceFormat getSourceFormat() {

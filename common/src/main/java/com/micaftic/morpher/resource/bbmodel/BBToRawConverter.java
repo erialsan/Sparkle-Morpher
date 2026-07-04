@@ -31,9 +31,13 @@ public class BBToRawConverter {
     private static final int BEZIER_BAKE_MAX_SEGMENT_SAMPLES = 24;
     private static final String IMPORT_SOURCE_EXTRA = "sparkle_morpher:bbmodel_import";
     private static final int IMPORT_FOOTER_VERSION = 32;
-    private static final byte[] IMPORT_CACHE_VERSION = "sparkle_morpher:bbmodel_import:v10".getBytes(StandardCharsets.UTF_8);
+    private static final byte[] IMPORT_CACHE_VERSION = "sparkle_morpher:bbmodel_import:v14".getBytes(StandardCharsets.UTF_8);
+    private static final String ELYTRA_LOCATOR = "ElytraLocator";
     private static final String LEFT_HAND_LOCATOR = "LeftHandLocator";
     private static final String RIGHT_HAND_LOCATOR = "RightHandLocator";
+    private static final String[] ELYTRA_PARENT_CANDIDATES = {
+            "body", "torso", "chest", "upperbody", "vanillabody", "waist"
+    };
     private static final String[] LEFT_HAND_PARENT_CANDIDATES = {
             "lefthand", "leftpalm", "leftwrist", "leftforearm", "leftlowerarm", "leftarm"
     };
@@ -57,6 +61,10 @@ public class BBToRawConverter {
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("SHA-256 algorithm not available", e);
         }
+    }
+
+    public static String importCacheIdentity() {
+        return new String(IMPORT_CACHE_VERSION, StandardCharsets.UTF_8) + "\nfooterVersion=" + IMPORT_FOOTER_VERSION;
     }
 
     /**
@@ -94,11 +102,13 @@ public class BBToRawConverter {
 
         convertGeometry(bbmodel, raw, elementsById);
         applyImportedPlayerDefaults(raw);
+        ensureElytraLocator(raw.mainEntity.mainModel);
         ensureHandLocators(raw.mainEntity.mainModel);
 
         // 鍔ㄧ敾
         convertAnimations(bbmodel, raw);
         ensureVanillaFallbackAnimations(raw);
+        applyImportedRouletteDefaults(raw);
 
         convertAnimationControllers(bbmodel, raw);
 
@@ -113,12 +123,54 @@ public class BBToRawConverter {
         raw.footer.extra = IMPORT_SOURCE_EXTRA;
     }
 
+    // Default action-roulette entries for imported bbmodel/figura players.
+    // key = animation name (played by index), value = display label (fallback when the
+    // model has no localized "properties.extra_animation.<key>" entry).
+    // Kept in sync with the bbmodel emote preset (builtin/bbmodel/animations/extra.animation.json).
+    private static final String[][] IMPORTED_ROULETTE_ENTRIES = {
+            {"extra0", "Wave"},
+            {"extra1", "Sit"},
+            {"extra2", "Cheer"},
+            {"extra3", "Point"}
+    };
+
+    // Give imported models a default emote roulette so their builtin bbmodel emotes are
+    // reachable via the roulette / hotkeys. putIfAbsent keeps any model-authored entries.
+    private static void applyImportedRouletteDefaults(RawYsmModel raw) {
+        if (raw.properties == null || raw.properties.extraAnimations == null) {
+            return;
+        }
+        for (String[] entry : IMPORTED_ROULETTE_ENTRIES) {
+            raw.properties.extraAnimations.putIfAbsent(entry[0], entry[1]);
+        }
+    }
+
     private static void ensureHandLocators(RawYsmModel.RawGeometry geometry) {
         if (geometry == null || geometry.bones == null || geometry.bones.isEmpty()) {
             return;
         }
         ensureHandLocator(geometry, LEFT_HAND_LOCATOR, LEFT_HAND_PARENT_CANDIDATES);
         ensureHandLocator(geometry, RIGHT_HAND_LOCATOR, RIGHT_HAND_PARENT_CANDIDATES);
+    }
+
+    private static void ensureElytraLocator(RawYsmModel.RawGeometry geometry) {
+        if (geometry == null || geometry.bones == null || geometry.bones.isEmpty()) {
+            return;
+        }
+        if (findBoneByName(geometry.bones, ELYTRA_LOCATOR) != null) {
+            return;
+        }
+        RawYsmModel.RawBone parent = findPreferredParentBone(geometry.bones, ELYTRA_PARENT_CANDIDATES);
+        if (parent == null) {
+            return;
+        }
+
+        RawYsmModel.RawBone locator = new RawYsmModel.RawBone();
+        locator.name = ELYTRA_LOCATOR;
+        locator.parentName = parent.name == null ? "" : parent.name;
+        locator.pivot = estimateElytraLocatorPivot(parent);
+        locator.rotation = new float[]{0, 0, 0};
+        geometry.bones.add(locator);
     }
 
     private static void ensureHandLocator(RawYsmModel.RawGeometry geometry, String locatorName, String[] parentCandidates) {
@@ -184,6 +236,29 @@ public class BBToRawConverter {
             score -= 50;
         }
         return score;
+    }
+
+    private static float[] estimateElytraLocatorPivot(RawYsmModel.RawBone parent) {
+        Bounds bounds = Bounds.from(parent);
+        float[] pivot = parent.pivot == null ? new float[]{0, 24, 2} : parent.pivot.clone();
+        if (pivot.length < 3) {
+            pivot = new float[]{0, 24, 2};
+        }
+        // 鞘翅挂在躯干的“上背/肩颈”处，与原版一致：
+        //   X 取躯干水平中心；Y 取躯干顶部（肩线）——原版鞘翅模型自带向下延展的翼面，从肩线垂下才是正确观感；
+        //   Z 取躯干背面再略微后移，让翼面贴在背后。
+        // 旧实现此处用 pivot[1] - 6，会把挂点压到躯干中部，导致鞘翅整体偏低、像裙子一样垂到腿上。
+        if (bounds.valid) {
+            return new float[]{
+                    (bounds.minX + bounds.maxX) * 0.5f,
+                    bounds.maxY,
+                    bounds.maxZ + 1.5f
+            };
+        }
+        // 无几何包围盒时退回 body 骨骼 pivot：标准人形 body 的 pivot 位于颈部（上背），
+        // 直接使用该高度并略微后移即可，不再向下偏移。
+        pivot[2] += 1.5f;
+        return pivot;
     }
 
     private static String normalizeBoneName(String name) {

@@ -48,6 +48,12 @@ dependencies {
     include "com.github.TartaricAlkaline:ImageStream:-SNAPSHOT"
 
     modCompileOnly "maven.modrinth:iris:1.8.8+1.21.1-fabric"
+    implementation "com.electronwill.night-config:core:3.9.0"
+    implementation "com.electronwill.night-config:toml:3.9.0"
+
+    implementation "com.electronwill.night-config:core:3.9.0"
+    implementation "com.electronwill.night-config:toml:3.9.0"
+
     modCompileOnly "com.terraformersmc:modmenu:$rootProject.modmenu_version"
 
     common(project(path: ':common', configuration: 'namedElements')) { transitive false }
@@ -88,3 +94,5 @@ remapJar {
             ? "sparkle-morpher-${project.version}-fa1.21.1-curseforge.jar"
             : "sparkle-morpher-${project.version}-fa1.21.1.jar"
 }
+
+

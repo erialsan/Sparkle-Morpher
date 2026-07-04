@@ -133,7 +133,9 @@ public class ImportedVanillaPoseController implements IAnimationController<Custo
 
     @Override
     public void forEachTransform(Consumer<BoneTransformProvider> consumer) {
-        this.head.accept(consumer, this.fallbackOnly);
+        if (!this.fallbackOnly) {
+            this.head.accept(consumer, false);
+        }
         this.body.accept(consumer, this.fallbackOnly);
         this.leftArm.accept(consumer, this.fallbackOnly);
         this.rightArm.accept(consumer, this.fallbackOnly);
@@ -156,7 +158,7 @@ public class ImportedVanillaPoseController implements IAnimationController<Custo
 
     private static PoseValues calculatePose(Player player, AnimationEvent<CustomPlayerEntity> event) {
         VanillaHumanoidPoseSampler.PoseSample vanillaPose = VanillaHumanoidPoseSampler.sample(player, event);
-        if (vanillaPose != null) {
+        if (vanillaPose != null && !shouldUseFallbackHandPose(player)) {
             return fromVanillaPose(vanillaPose);
         }
         PoseValues pose = new PoseValues();
@@ -188,6 +190,16 @@ public class ImportedVanillaPoseController implements IAnimationController<Custo
             pose.rightLegX = -1.4137167f;
             pose.rightLegY = -0.31415927f;
             pose.rightLegZ = -0.07853982f;
+            applyHeldItemPose(player, event, pose);
+            return pose;
+        }
+        if (player.isFallFlying() || player.getPose() == Pose.FALL_FLYING) {
+            pose.name = "elytra_fly";
+            pose.leftArmX = 0.15f;
+            pose.rightArmX = 0.15f;
+            pose.leftArmZ = -0.25f;
+            pose.rightArmZ = 0.25f;
+            applyVanillaLegPose(pose, vanillaPose, limbSwing, limbSwingAmount);
             applyHeldItemPose(player, event, pose);
             return pose;
         }
@@ -229,6 +241,17 @@ public class ImportedVanillaPoseController implements IAnimationController<Custo
         return pose;
     }
 
+    private static boolean shouldUseFallbackHandPose(Player player) {
+        if (player.isUsingItem()
+                || InputStateKey.isUsingItem(player, InteractionHand.MAIN_HAND)
+                || InputStateKey.isUsingItem(player, InteractionHand.OFF_HAND)
+                || InputStateKey.isSwinging(player, InteractionHand.MAIN_HAND)
+                || InputStateKey.isSwinging(player, InteractionHand.OFF_HAND)) {
+            return true;
+        }
+        return !player.getMainHandItem().isEmpty() || !player.getOffhandItem().isEmpty();
+    }
+
     private static PoseValues fromVanillaPose(VanillaHumanoidPoseSampler.PoseSample vanillaPose) {
         PoseValues pose = new PoseValues();
         pose.name = "vanilla";
@@ -251,6 +274,27 @@ public class ImportedVanillaPoseController implements IAnimationController<Custo
         pose.rightLegY = vanillaPose.rightLeg.yRot;
         pose.rightLegZ = vanillaPose.rightLeg.zRot;
         return pose;
+    }
+
+    /**
+     * 鞘翅飞行时腿部遵循原版机制：优先直接采用原版 {@code PlayerModel.setupAnim} 计算出的腿部旋转
+     * （与空手路径完全同源，基于行走速度 {@code limbSwingAmount} 摆动，站定时归零）；
+     * 仅当原版采样不可用（反射失败）时，退回到原版同款的行走摆动公式。
+     * 这样无论手上是否持物（如烟花），腿部表现都与空手时一致，而不是被写死为固定角度。
+     */
+    private static void applyVanillaLegPose(PoseValues pose, VanillaHumanoidPoseSampler.PoseSample vanillaPose,
+                                            float limbSwing, float limbSwingAmount) {
+        if (vanillaPose != null) {
+            pose.leftLegX = vanillaPose.leftLeg.xRot;
+            pose.leftLegY = vanillaPose.leftLeg.yRot;
+            pose.leftLegZ = vanillaPose.leftLeg.zRot;
+            pose.rightLegX = vanillaPose.rightLeg.xRot;
+            pose.rightLegY = vanillaPose.rightLeg.yRot;
+            pose.rightLegZ = vanillaPose.rightLeg.zRot;
+            return;
+        }
+        pose.leftLegX = Mth.cos(limbSwing * 0.6662f) * 1.4f * limbSwingAmount;
+        pose.rightLegX = Mth.cos(limbSwing * 0.6662f + (float) Math.PI) * 1.4f * limbSwingAmount;
     }
 
     private static void applyHeldItemPose(Player player, AnimationEvent<CustomPlayerEntity> event, PoseValues pose) {
