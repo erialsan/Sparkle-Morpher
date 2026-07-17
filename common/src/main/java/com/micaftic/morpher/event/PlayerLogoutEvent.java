@@ -3,7 +3,6 @@ package com.micaftic.morpher.event;
 import com.micaftic.morpher.YesSteveModel;
 import com.micaftic.morpher.capability.ModelInfoCapability;
 import com.micaftic.morpher.model.ServerModelManager;
-import com.micaftic.morpher.network.NetworkHandler;
 import com.micaftic.morpher.util.NetworkOnlineDebugLog;
 import com.micaftic.morpher.util.PlayerDataSaveBridge;
 import com.micaftic.morpher.util.PlayerModelSelectionStore;
@@ -19,9 +18,7 @@ public final class PlayerLogoutEvent {
             if (!YesSteveModel.isAvailable()) {
                 return;
             }
-            if (NetworkHandler.isPlayerConnected(player)) {
-                ServerModelManager.syncModelToPlayer(player.getUUID());
-            }
+            ServerModelManager.clearPlayerSyncState(player.getUUID());
             ModelInfoCapability.get(player).ifPresent(cap -> PlayerModelSelectionStore.saveCurrentSelection(player, cap));
             PlayerDataSaveBridge.save(player);
             NetworkOnlineDebugLog.info("Forced player data save on logout: {}", player.getName().getString());
